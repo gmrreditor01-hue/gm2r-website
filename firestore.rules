@@ -1,0 +1,32 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function editor() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.active == true
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email == request.auth.token.email
+        && request.auth.token.email in ['gmrr.editor01@gmail.com', 'gmrr.adm01@gmail.com'];
+    }
+    match /users/{uid} {
+      allow get: if request.auth != null && request.auth.uid == uid;
+      allow list, create, update, delete: if false;
+    }
+    match /portalData/{section} {
+      // Everyone with the website URL can view these records without signing in.
+      allow get: if section in ['gm2r-kpi-v2','gm2r-employee-applications-v1','gm2r-company-profile-v1','gm2r-attendance-v1','gm2r-company-chart-v1'];
+      allow list: if false;
+      // Only an approved editor, authenticated with password, can update records.
+      allow create, update: if editor()
+        && section in ['gm2r-kpi-v2','gm2r-employee-applications-v1','gm2r-company-profile-v1','gm2r-attendance-v1','gm2r-company-chart-v1']
+        && request.resource.data.keys().hasOnly(['content','updatedBy','updatedAt'])
+        && request.resource.data.content is string
+        && request.resource.data.content.size() <= 850000
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}
